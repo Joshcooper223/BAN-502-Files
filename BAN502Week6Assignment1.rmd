@@ -1,0 +1,132 @@
+---
+output:
+  word_document: default
+  html_document: default
+---
+# Josh Cooper
+
+## Clustering
+
+```{r}
+library(tidyverse)
+library(tidymodels)
+trucks <- read_csv("trucks.csv")
+```
+
+```{r}
+ggplot(trucks, aes(Distance, Speeding)) +
+  geom_point()
+```
+
+Seems like the drivers of shorter distances are driving a lot slower than those who are driving the longer distances 
+
+```{r}
+trucks_scaled = scale(trucks) 
+summary(trucks_scaled)
+```
+
+```{r}
+kmeans_recipe = recipe(~ Distance + Speeding, trucks) 
+
+trucks_dummy = kmeans_recipe %>% 
+  step_scale(all_numeric()) %>%
+  step_center(all_numeric()) 
+
+trucks_dummy = prep(trucks_dummy, trucks) 
+
+trucks_cleaned = bake(trucks_dummy, trucks) 
+```
+
+```{r}
+set.seed(64)
+clusters = kmeans(trucks_cleaned, 2)
+trucks = augment(clusters, trucks)
+
+```
+
+```{r}
+ggplot(trucks, aes(x=Distance ,y=Speeding, color=factor(.cluster))) + geom_point() 
+```
+
+Cluster 1 is showing that if you are traveling a shorter distance and that speeding is lower compared to Cluster 2 who is trucks going longer distances and are they have higher chance of speeding 
+
+```{r}
+set.seed(412)
+clusts2 = 
+  tibble(k = 1:8) %>%
+  mutate(
+    kclust = map(k, ~kmeans(trucks_cleaned, .x)),
+    tidied = map(kclust, tidy),
+    glanced = map(kclust, glance),
+    augmented = map(kclust, augment, trucks)
+  )
+
+clusts2
+```
+
+```{r}
+clusters2 = 
+  clusts2 %>%
+  unnest(cols = c(tidied))
+
+assignments2 = 
+  clusts2 %>% 
+  unnest(cols = c(augmented))
+
+clusterings2 = 
+  clusts2 %>%
+  unnest(cols = c(glanced))
+```
+
+```{r}
+ggplot(assignments2, aes(x = Distance, y = Speeding)) +
+  geom_point(aes(color = .cluster), alpha = 0.8) + 
+  facet_wrap(~ k)
+```
+
+
+```{r}
+ggplot(clusterings2, aes(k, tot.withinss)) +
+  geom_line() +
+  geom_point()
+```
+
+3 or 4  seems to be the best cluster or k for the dataset 
+
+```{r}
+set.seed(64)
+clusts3 = 
+  tibble(k = 3:4) %>%
+  mutate(
+    kclust = map(k, ~kmeans(trucks_cleaned, .x)),
+    tidied = map(kclust, tidy),
+    glanced = map(kclust, glance),
+    augmented = map(kclust, augment, trucks_cleaned)
+  )
+
+clusts3
+```
+
+```{r}
+clusters3 = 
+  clusts3 %>%
+  unnest(cols = c(tidied))
+
+assignments3 = 
+  clusts3 %>% 
+  unnest(cols = c(augmented))
+
+clusterings3 = 
+  clusts3 %>%
+  unnest(cols = c(glanced))
+```
+
+```{r}
+p2 = 
+  ggplot(assignments3, aes(x = Distance, y = Speeding)) +
+  geom_point(aes(color = .cluster), alpha = 0.8) + 
+  facet_wrap(~ k)
+p2
+```
+
+With three and 4 clusters on each of the graphs, you are able to see that cluster three has the highest chance of speeding out of all of the clusters, even with the distances not being equal

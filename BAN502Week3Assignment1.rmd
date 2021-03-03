@@ -1,0 +1,66 @@
+---
+output:
+  word_document: default
+  html_document: default
+---
+# Model Validation
+
+## Josh Cooper
+
+```{r}
+library(tidyverse) 
+library(tidymodels)
+library(lubridate)
+library(GGally)
+bike_cleaned <- read_csv("bike_cleaned.csv")
+bike <- bike_cleaned
+```
+
+```{r}
+bike = bike %>% mutate(dteday = mdy(dteday))
+bike = bike %>% mutate(season = as_factor(season))
+bike = bike %>% mutate(mnth = as_factor(mnth))
+bike = bike %>% mutate(holiday = as_factor(holiday))
+bike = bike %>% mutate(weekday = as_factor(weekday))
+bike = bike %>% mutate(workingday = as_factor(workingday))
+bike = bike %>% mutate(weathersit = as_factor(weathersit))
+bike = bike %>% mutate(hr = as_factor(hr))
+```
+
+```{r}
+set.seed(1234)
+bike_split = initial_split(bike, prop = .70, strata = count)
+train = training(bike_split)
+test = testing(bike_split)
+```
+
+In test there are 5212 rows and in train there are 12167 rows 
+
+```{r}
+count_recipe = recipe(count ~ season + mnth + hr + holiday + weekday + temp + weathersit, train)
+
+lm_model = 
+  linear_reg() %>% 
+  set_engine("lm") 
+
+lm_wflow = 
+  workflow() %>% 
+  add_model(lm_model) %>% 
+  add_recipe(count_recipe)
+
+lm_fit = fit(lm_wflow, train)
+```
+
+```{r}
+summary(lm_fit$fit$fit$fit)
+```
+
+```{r}
+lm_fit %>% predict(test) %>% bind_cols(test) %>% metrics(truth = count, estimate = .pred)
+predict_train = predict(lm_fit, train)
+ggplot(predict_train, aes(x=.pred)) +
+  geom_histogram() +
+  theme_bw()
+```
+
+With the r squared at .61 the model for train is over fitting 

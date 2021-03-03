@@ -1,0 +1,49 @@
+---
+output:
+  word_document: default
+  html_document: default
+---
+# R Studio Refresher Assignment  
+
+## Josh Cooper 
+
+```{r}
+library(tidyverse)
+diamonddata=diamonds
+```
+
+They are 53940 rows and 10 columns 
+
+```{r}
+ggplot(diamonds, aes(x=carat, y=price)) +
+  geom_point()
+ggplot(diamonds, aes(x=carat, y=price, color=cut)) +
+  geom_point()
+```
+
+Looking at the graph the higher the carat the more expensive the diamond is. When looking at the second graph the diamonds with the more ideal cut seem to be more expensive diamonds.
+
+```{r}
+ggplot(diamonds, aes(x=carat, y=price, color=cut)) +
+  geom_point() +
+  facet_wrap(~ color)
+```
+
+This shows us the highest it is on the color scale for a diamond, the more carats are in it. The price looks the same in almost every graph.
+
+```{r}
+InventoryData_BAN_502 <- read_csv("InventoryData BAN 502.csv")
+InventoryA <- filter(InventoryData_BAN_502, Supplier == 'A')
+InventoryA = mutate(InventoryA, OnHandRatio = `On Hand` / `Annual Demand`)
+```
+
+There are now only 3695 rows in this new dataset. With the new mutate, it divided what was on hand versus what we had in our annual demand to get a ratio.
+
+```{r}
+avg_cost <- select(InventoryData_BAN_502, 'Cost per Unit ($)', 'Item SKU')
+avg_cost %>%
+  group_by(`Item SKU`) %>%
+  summarise(SKUAvgCost = mean(`Cost per Unit ($)`))
+```
+
+The last question was a little challenging, but I think I was able to get the right answer. Everything else seemed fairly easy. Overall, I think I did pretty well. 

@@ -1,0 +1,212 @@
+---
+output:
+  word_document: default
+  html_document: default
+---
+# Random Forest
+
+## Josh Cooper 
+
+```{r include=FALSE}
+library(tidyverse)
+library(tidymodels)
+library(caret)
+library(gridExtra)
+library(vip)
+library(ranger)
+library(VIM)
+library(naniar)
+library(UpSetR)
+```
+
+```{r}
+Drugs <- read_csv("Drugs.csv")
+```
+
+```{r}
+names(Drugs) = c("ID", "Age", "Gender", "Education", "Country", "Ethnicity",
+"Nscore", "Escore", "Oscore", "Ascore", "Cscore", "Impulsive",
+"SS", "Alcohol", "Amphet", "Amyl", "Benzos", "Caff", "Cannabis",
+"Choc", "Coke", "Crack", "Ecstasy", "Heroin", "Ketamine", "Legalh",
+"LSD", "Meth", "Mushrooms", "Nicotine", "Semer", "VSA")
+```
+
+```{r}
+Drugs[Drugs == "CL0"] = "No"
+Drugs[Drugs == "CL1"] = "No"
+Drugs[Drugs == "CL2"] = "Yes"
+Drugs[Drugs == "CL3"] = "Yes"
+Drugs[Drugs == "CL4"] = "Yes"
+Drugs[Drugs == "CL5"] = "Yes"
+Drugs[Drugs == "CL6"] = "Yes"
+```
+
+```{r}
+Drugs_clean = Drugs %>% mutate_at(vars(Age:Ethnicity), funs(as_factor)) %>%
+  mutate(Age = factor(Age, labels = c("18_24", "25_34", "35_44",
+  "45_54", "55_64", "65_"))) %>%
+  mutate(Gender = factor(Gender, labels = c("Male", "Female"))) %>%
+  mutate(Education = factor(Education, labels = c("Under16", "At16", "At17", "At18", "SomeCollege",    "ProfessionalCert", "Bachelors", "Masters", "Doctorate"))) %>%
+  mutate(Country = factor(Country,
+  labels = c("USA", "NewZealand", "Other", "Australia",
+  "Ireland","Canada","UK"))) %>%
+  mutate(Ethnicity = factor(Ethnicity,
+  labels = c("Black", "Asian", "White", "White/Black", "Other",
+  "White/Asian", "Black/Asian"))) %>%
+  mutate_at(vars(Alcohol:VSA), funs(as_factor)) %>%
+  select(-ID)
+```
+
+```{r}
+Drugs_clean = Drugs_clean %>% select(!(Alcohol:Mushrooms)) %>% select(!(Semer:VSA))
+names(Drugs_clean)
+```
+
+```{r}
+gg_miss_var(Drugs_clean)
+Drugs_clean = Drugs_clean %>% drop_na()
+```
+
+There is no missing data in the data
+
+```{r}
+set.seed(1234)
+Drugs_split = initial_split(Drugs_clean, prop = .7, strata = Nicotine)
+train = training(Drugs_split)
+test = testing(Drugs_split)
+```
+
+```{r}
+p1 = ggplot(train, aes(x = Age, fill = Nicotine)) + geom_bar(position = "fill")
+p2 = ggplot(train, aes(x = Gender, fill = Nicotine)) + geom_bar(position = "fill")
+p3 = ggplot(train, aes(x = Education, fill = Nicotine)) + geom_bar(position = "fill")
+p4 = ggplot(train, aes(x = Ethnicity, fill = Nicotine)) + geom_bar(position = "fill")
+p5 = ggplot(train, aes(x = Country, fill = Nicotine)) + geom_bar(position = "fill")
+grid.arrange(p1,p2,p3,p4,p5)
+```
+
+The older people get the more nicotine use, more women use nicotine, more black and Asian use nicotine and lastly the people in the UK use Nicotine the most. 
+
+```{r}
+p1 = ggplot(train, aes(x = Nicotine, y = Nscore)) + geom_boxplot()
+p2 = ggplot(train, aes(x = Nicotine, y = Escore)) + geom_boxplot()
+p3 = ggplot(train, aes(x = Nicotine, y = Oscore)) + geom_boxplot()
+p4 = ggplot(train, aes(x = Nicotine, y = Ascore)) + geom_boxplot()
+grid.arrange(p1,p2,p3,p4, ncol = 2)
+```
+
+```{r}
+p1 = ggplot(train, aes(x = Nicotine, y = Cscore)) + geom_boxplot()
+p2 = ggplot(train, aes(x = Nicotine, y = Impulsive)) + geom_boxplot()
+p3 = ggplot(train, aes(x = Nicotine, y = SS)) + geom_boxplot()
+grid.arrange(p1,p2,p3, ncol = 2)
+```
+
+```{r}
+set.seed(123)
+rf_folds = vfold_cv(train, v = 5)
+```
+
+```{r}
+Drug_recipe = recipe(Nicotine ~., train) %>%
+  step_dummy(all_nominal(), -all_outcomes())
+
+rf_model = rand_forest(mtry = tune(), min_n = tune(), trees = 100) %>% 
+  set_engine("ranger", importance = "permutation") %>% 
+  set_mode("classification")
+
+Drug_wflow = 
+  workflow() %>% 
+  add_model(rf_model) %>% 
+  add_recipe(Drug_recipe)
+
+rf_grid = grid_regular(
+  mtry(range = c(2, 8)), 
+  min_n(range = c(5, 20)), 
+  levels = 10
+)
+
+set.seed(123)
+rf_res_tuned = tune_grid(
+  Drug_wflow,
+  resamples = rf_folds,
+  grid = rf_grid 
+)
+```
+
+```{r}
+rf_res_tuned %>%
+  collect_metrics() %>%
+  filter(.metric == "accuracy") %>%
+  select(mean, min_n, mtry) %>%
+  pivot_longer(min_n:mtry,
+    values_to = "value",
+    names_to = "parameter"
+  ) %>%
+  ggplot(aes(value, mean, color = parameter)) +
+  geom_point(show.legend = FALSE) +
+  facet_wrap(~parameter, scales = "free_x") +
+  labs(x = NULL, y = "Accuracy")
+```
+
+Pretty consistent with the min_n and the mtry across all of the metrics.
+
+```{r}
+rf_res_tuned %>%
+  collect_metrics() %>%
+  filter(.metric == "accuracy") %>%
+  mutate(min_n = factor(min_n)) %>%
+  ggplot(aes(mtry, mean, color = min_n)) +
+  geom_line(alpha = 0.5, size = 1.5) +
+  geom_point() +
+  labs(y = "Accuracy")
+```
+
+The best mtry value seems to be three, it creates the best min_n value of 20 
+
+```{r}
+best_rf = select_best(rf_res_tuned, "accuracy")
+
+final_rf = finalize_workflow(
+  Drug_wflow,
+  best_rf
+)
+
+final_rf
+```
+```{r}
+final_rf_fit = fit(final_rf, train)
+```
+
+```{r}
+final_rf_fit %>% pull_workflow_fit() %>% vip(geom = "point")
+```
+
+SS has the highest importance in the data (the difference in the dependent variable), while the UK and the Oscore (standard score) are the other important variables.
+
+```{r}
+trainpredrf = predict(final_rf_fit, train)
+head(trainpredrf)
+```
+
+```{r}
+confusionMatrix(trainpredrf$.pred_class, train$Nicotine, 
+                positive = "Yes")
+```
+
+The accuracy of 84% is pretty good on the training set
+
+```{r}
+testpredrf = predict(final_rf_fit, test)
+head(testpredrf)
+confusionMatrix(testpredrf$.pred_class, test$Nicotine, 
+                positive = "Yes")
+```
+
+The Test set is not as accurate as the training set with an accuracy of 71%
+
+```{r include=FALSE}
+saveRDS(final_rf_fit, "final_rf_fit.rds")
+```
+
+I would use this model in the real world, it gives a decent representation of nicotine use across the globe and it shows where it is most prevalent and who uses it the most. Many large companies could use this to their advantage to see where they could sell more nicotine or advertise more to those would use the drug more than others.

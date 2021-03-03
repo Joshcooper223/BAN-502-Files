@@ -1,0 +1,151 @@
+---
+output:
+  word_document: default
+  html_document: default
+---
+#BAN 502 Week 2 Assignment 2
+
+## Josh Cooper 
+
+```{r}
+library(tidyverse) 
+library(tidymodels)
+library(glmnet)  
+library(GGally) 
+library(ggcorrplot) 
+library(MASS) 
+library(leaps) 
+library(lmtest) 
+library(lubridate)
+library(splines)
+library(car)
+bike_cleaned <- read_csv("bike_cleaned.csv")
+bike<-bike_cleaned
+```
+
+Conversions
+```{r}
+bike = bike %>% mutate(dteday = mdy(dteday))
+bike = bike %>% mutate(season = as_factor(season))
+bike = bike %>% mutate(mnth = as_factor(mnth))
+bike = bike %>% mutate(holiday = as_factor(holiday))
+bike = bike %>% mutate(weekday = as_factor(weekday))
+bike = bike %>% mutate(workingday = as_factor(workingday))
+bike = bike %>% mutate(weathersit = as_factor(weathersit))
+bike = bike %>% mutate(hr = as_factor(hr))
+```
+
+Correlation Matrix 
+```{r}
+ggcorr(bike, label = "TRUE", label_round = 2) 
+ggplot(bike,aes(x=season,y=count)) + geom_boxplot() + theme_bw()
+ggplot(bike,aes(x=mnth,y=count)) + geom_boxplot() + theme_bw()
+ggplot(bike,aes(x=hr,y=count)) + geom_boxplot() + theme_bw()
+ggplot(bike,aes(x=holiday,y=count)) + geom_boxplot() + theme_bw()
+ggplot(bike,aes(x=weekday,y=count)) + geom_boxplot() + theme_bw()
+ggplot(bike,aes(x=workingday,y=count)) + geom_boxplot() + theme_bw()
+ggplot(bike,aes(x=weathersit,y=count)) + geom_boxplot() + theme_bw()
+```
+
+The best correlated variable with count is temperature and actual temperature. Using the boxplots, the ones that most effected the count were the weather, the month of the year, the day of the week, the season and the hour of the day.
+
+Correlation Model 
+```{r}
+bike_recipe = recipe(count ~ hr , bike)
+
+lm_model=
+  linear_reg() %>%
+  set_engine("lm")
+
+lm_wflow =
+  workflow() %>%
+  add_model(lm_model) %>%
+  add_recipe(bike_recipe)
+
+lm_fit=fit(lm_wflow,bike)
+```
+
+```{r}
+summary(lm_fit$fit$fit$fit)
+```
+
+This model is a very good predictor. All the hours are significant and the the R squared value is at .5 compared to the other variables where the R squared was around .02 and .07.
+
+Ridge Model
+```{r}
+bike_recipe2 = recipe(count ~ ., bike) %>%
+  step_ns(temp, deg_free = 4) %>%
+  step_rm("instant", "dteday", "registered", "casual") %>%
+  step_dummy(all_nominal()) %>% 
+  step_center(all_predictors()) %>% 
+  step_scale(all_predictors()) 
+  
+  
+ridge_model = 
+  linear_reg(mixture = 0 ) %>% 
+  set_engine("glmnet") 
+
+ridge_wflow = 
+  workflow() %>% 
+  add_model(ridge_model) %>% 
+  add_recipe(bike_recipe2)
+
+ridge_fit = fit(ridge_wflow, bike)
+```
+
+```{r}
+plot(ridge_fit$fit$fit$fit$lambda,ridge_fit$fit$fit$fit$dev.ratio)
+```
+
+```{r}
+ridge_fit %>%
+  pull_workflow_fit() %>%
+  pluck("fit") 
+```
+Using the Lambada of 9 it gives us for the R squared value of 63.
+```{r}
+ridge_fit %>%
+  pull_workflow_fit() %>%
+  pluck("fit")  %>% 
+  coef(s = 9)
+```
+
+LASSO Method
+
+```{r}
+bike_recipe3 = recipe(count ~ ., bike) %>%
+  step_ns(temp, deg_free = 4) %>%
+  step_rm("instant", "dteday", "registered", "casual") %>%
+  step_dummy(all_nominal()) %>% 
+  step_center(all_predictors()) %>% 
+  step_scale(all_predictors()) 
+  
+  
+lasso_model = 
+  linear_reg(mixture = 1 ) %>% 
+  set_engine("glmnet") 
+
+lasso_wflow = 
+  workflow() %>% 
+  add_model(lasso_model) %>% 
+  add_recipe(bike_recipe3)
+
+lasso_fit = fit(lasso_wflow, bike)
+```
+
+```{r}
+lasso_fit %>%
+  pull_workflow_fit() %>%
+  pluck("fit") 
+```
+
+The lambada 1.213 is an R squared of 63.04
+
+```{r}
+lasso_fit %>%
+  pull_workflow_fit() %>%
+  pluck("fit")  %>% 
+  coef(s = 1.213)
+```
+
+The lasso method is much smoother and with this method many of the coefficients are zero which help shows which ones are more important than the others. I prefer using this model over the ridge model. 
